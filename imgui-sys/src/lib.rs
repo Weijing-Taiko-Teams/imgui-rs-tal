@@ -1,56 +1,7 @@
 #![no_std]
 
-cfg_if::cfg_if! {
-    if #[cfg(feature = "wasm")] {
-        cfg_if::cfg_if! {
-            if #[cfg(feature = "docking")] {
-                cfg_if::cfg_if! {
-                    if #[cfg(feature = "freetype")] {
-                        mod wasm_docking_freetype_bindings;
-                        pub use crate::wasm_docking_freetype_bindings::*;
-                    } else {
-                        mod wasm_docking_bindings;
-                        pub use crate::wasm_docking_bindings::*;
-                    }
-                }
-            } else {
-                cfg_if::cfg_if! {
-                    if #[cfg(feature = "freetype")] {
-                        mod wasm_freetype_bindings;
-                        pub use crate::wasm_freetype_bindings::*;
-                    } else {
-                        mod wasm_bindings;
-                        pub use crate::wasm_bindings::*;
-                    }
-                }
-            }
-        }
-    } else {
-        cfg_if::cfg_if! {
-            if #[cfg(feature = "docking")] {
-                cfg_if::cfg_if! {
-                    if #[cfg(feature = "freetype")] {
-                        mod docking_freetype_bindings;
-                        pub use crate::docking_freetype_bindings::*;
-                    } else {
-                        mod docking_bindings;
-                        pub use crate::docking_bindings::*;
-                    }
-                }
-            } else {
-                cfg_if::cfg_if! {
-                    if #[cfg(feature = "freetype")] {
-                        mod freetype_bindings;
-                        pub use crate::freetype_bindings::*;
-                    } else {
-                        mod bindings;
-                        pub use crate::bindings::*;
-                    }
-                }
-            }
-        }
-    }
-}
+mod bindings;
+pub use crate::bindings::*;
 
 impl ImVec2 {
     #[inline]

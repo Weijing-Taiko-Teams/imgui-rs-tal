@@ -80,6 +80,37 @@ fn no_current_context() -> bool {
     ctx.is_null()
 }
 
+#[derive(Debug)]
+pub struct RawContext {
+    shared_font_atlas: Option<SharedFontAtlas>,
+    ui: Ui,
+}
+
+impl RawContext {
+    pub fn from_current() -> Option<Self> {
+        let raw = unsafe { sys::igGetCurrentContext() };
+        if raw.is_null() {
+            None
+        } else {
+            Some(RawContext {
+                shared_font_atlas: None,
+                ui: Ui {
+                    buffer: UnsafeCell::new(crate::string::UiBuffer::new(1024)),
+                },
+            })
+        }
+    }
+
+    pub unsafe fn from_current_unchecked() -> Self {
+        RawContext {
+            shared_font_atlas: None,
+            ui: Ui {
+                buffer: UnsafeCell::new(crate::string::UiBuffer::new(1024)),
+            },
+        }
+    }
+}
+
 impl Context {
     /// Creates a new active imgui-rs context.
     ///
@@ -270,6 +301,13 @@ impl Drop for Context {
             }
             sys::igDestroyContext(self.raw);
         }
+    }
+}
+
+impl Drop for RawContext {
+    #[doc(alias = "DestroyContext")]
+    fn drop(&mut self) {
+        let _guard = CTX_MUTEX.lock();
     }
 }
 
@@ -477,6 +515,112 @@ fn test_set_log_filename() {
     let (_guard, mut ctx) = crate::test::test_ctx();
     ctx.set_log_filename(Some(PathBuf::from("test.log")));
     assert_eq!(ctx.log_filename(), Some(PathBuf::from("test.log")));
+}
+
+impl RawContext {
+    /// Returns an immutable reference to the inputs/outputs object
+    pub fn io(&self) -> &Io {
+        unsafe {
+            // safe because Io is a transparent wrapper around sys::ImGuiIO
+            &*(sys::igGetIO() as *const Io)
+        }
+    }
+    /// Returns a mutable reference to the inputs/outputs object
+    pub fn io_mut(&mut self) -> &mut Io {
+        unsafe {
+            // safe because Io is a transparent wrapper around sys::ImGuiIO
+            &mut *(sys::igGetIO() as *mut Io)
+        }
+    }
+
+    /// Returns an immutable reference to the user interface style
+    #[doc(alias = "GetStyle")]
+    pub fn style(&self) -> &Style {
+        unsafe {
+            // safe because Style is a transparent wrapper around sys::ImGuiStyle
+            &*(sys::igGetStyle() as *const Style)
+        }
+    }
+    /// Returns a mutable reference to the user interface style
+    #[doc(alias = "GetStyle")]
+    pub fn style_mut(&mut self) -> &mut Style {
+        unsafe {
+            // safe because Style is a transparent wrapper around sys::ImGuiStyle
+            &mut *(sys::igGetStyle() as *mut Style)
+        }
+    }
+    /// Returns a mutable reference to the font atlas.
+    pub fn fonts(&mut self) -> &mut FontAtlas {
+        // we take this with an `&mut Self` here, which means
+        // that we can't get the sharedfontatlas through safe code
+        // otherwise
+        unsafe { &mut *self.io_mut().fonts }
+    }
+
+    /// Attempts to clone the interior shared font atlas **if it exists**.
+    pub fn clone_shared_font_atlas(&mut self) -> Option<SharedFontAtlas> {
+        self.shared_font_atlas.clone()
+    }
+
+    /// Starts a new frame. Use [`new_frame`] instead.
+    ///
+    /// [`new_frame`]: Self::new_frame
+    pub fn frame(&mut self) -> &mut Ui {
+        self.new_frame()
+    }
+
+    /// Starts a new frame and returns an `Ui` instance for constructing a user interface.
+    #[doc(alias = "NewFrame")]
+    pub fn new_frame(&mut self) -> &mut Ui {
+        // Clear default font if it no longer exists. This could be an error in the future
+        let default_font = self.io().font_default;
+        if !default_font.is_null() && self.fonts().get_font(FontId(default_font)).is_none() {
+            self.io_mut().font_default = ptr::null_mut();
+        }
+        // TODO: precondition checks
+        // unsafe {
+        //     sys::igNewFrame();
+        // }
+
+        &mut self.ui
+    }
+
+    /// Renders the frame and returns a reference to the resulting draw data.
+    ///
+    /// This should only be called after calling [`new_frame`].
+    ///
+    /// [`new_frame`]: Self::new_frame
+    #[doc(alias = "Render", alias = "GetDrawData")]
+    pub fn render(&mut self) -> &DrawData {
+        unsafe {
+            sys::igRender();
+            &*(sys::igGetDrawData() as *mut DrawData)
+        }
+    }
+
+    /// Returns the currently desired mouse cursor type.
+    ///
+    /// This was set *last frame* by the [Ui] object, and will be reset when
+    /// [new_frame] is called.
+    ///
+    /// Returns `None` if no cursor should be displayed
+    ///
+    /// [new_frame]: Self::new_frame
+    #[doc(alias = "GetMouseCursor")]
+    pub fn mouse_cursor(&self) -> Option<MouseCursor> {
+        match unsafe { sys::igGetMouseCursor() } {
+            sys::ImGuiMouseCursor_Arrow => Some(MouseCursor::Arrow),
+            sys::ImGuiMouseCursor_TextInput => Some(MouseCursor::TextInput),
+            sys::ImGuiMouseCursor_ResizeAll => Some(MouseCursor::ResizeAll),
+            sys::ImGuiMouseCursor_ResizeNS => Some(MouseCursor::ResizeNS),
+            sys::ImGuiMouseCursor_ResizeEW => Some(MouseCursor::ResizeEW),
+            sys::ImGuiMouseCursor_ResizeNESW => Some(MouseCursor::ResizeNESW),
+            sys::ImGuiMouseCursor_ResizeNWSE => Some(MouseCursor::ResizeNWSE),
+            sys::ImGuiMouseCursor_Hand => Some(MouseCursor::Hand),
+            sys::ImGuiMouseCursor_NotAllowed => Some(MouseCursor::NotAllowed),
+            _ => None,
+        }
+    }
 }
 
 impl Context {
